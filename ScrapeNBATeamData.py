@@ -9,13 +9,12 @@ End result will be a CSV for modularity (maybe ability to return dataframe based
 Goal for this project is to use it periodically through the season and compare results versus actual performances
 to evaluate model.
 """
-import pandas as pd
-import numpy as np
-from urllib.request import urlopen
 
+import re
+import pandas as pd
+from urllib.request import urlopen
 from bs4 import BeautifulSoup
 from bs4 import Comment
-import re
 
 
 class NBATeamDataScraper:
@@ -24,9 +23,25 @@ class NBATeamDataScraper:
             Will return the data either as CSV or pandas Dataframe.
             * Years are inclusive *                                                     """
 
+        if first_year < 1971 and last_year < 1971:
+            print("Error: Queries must be in range of 1971 - 2021. Returning NULL.")
+            return pd.DataFrame()
+        elif first_year < 1971:
+            print("WARNING: Year must be greater than 1971. Returning your query from 1971 until last_year.")
+            first_year = 1971
+        if last_year > 2021:
+            print("WARNING: We are in the year 2021. We cannot see stats from the future.")
+            last_year = 2021
+        if first_year > last_year:
+            print("ERROR: First year in query must be less than or equal to the last year in the query. Returning NULL.")
+            return pd.DataFrame()
+
         cumulative_dataframe = self.perform_scrape_one_season(self, first_year)
         for i in range(first_year+1, last_year+1):
             cumulative_dataframe = cumulative_dataframe.append(self.perform_scrape_one_season(self, i))
+
+        # Create a true scaling index value for all appended rows, then remove previously incorrect one.
+        cumulative_dataframe = cumulative_dataframe.reset_index().drop(["index"], axis=1)
         return cumulative_dataframe
 
     def perform_scrape_one_season(self, year):
@@ -38,11 +53,13 @@ class NBATeamDataScraper:
         webpage_htmml = urlopen(full_season_url)
         webpage_soup = BeautifulSoup(webpage_htmml, 'html.parser')
 
-        #offense_data = self.gather_offense_data(self, webpage_soup)
-        #defense_data = self.gather_defense_data(self, webpage_soup)
+        offense_data = self.gather_offense_data(self, webpage_soup)
+        defense_data = self.gather_defense_data(self, webpage_soup)
+        merged_data = self.merge_team_tables(self, offense_data, defense_data)
+
         all_teams_number_wins_df = self.grab_team_wins_df(self, webpage_soup)
-        #merged_data = self.merge_team_opponent_data(self, offense_data, defense_data)
-        #return merged_data
+        merged_data_with_wins = self.merge_team_tables(self, all_teams_number_wins_df, merged_data)
+        return merged_data_with_wins
 
     def process_cleaned_data(self, cleaned_data, offense):
         """ 'Meat and Potatoes' operation here. It takes in an untamed dataframe and makes sure it's good to go."""
@@ -93,22 +110,39 @@ class NBATeamDataScraper:
         return cleaned_data_revised
 
     def grab_team_wins_df(self, webpage_soup):
-        soup = webpage_soup.find_all(lambda tag: tag.name =='table' and tag.has_attr('id') and (tag['id'] == "divs_standings_E" or tag['id'] == "divs_standings_W"))
+
+        # Grabs wins table HTML parsed info from webpage (east and west are stored separately by bball reference).
+        soup = webpage_soup.find_all(lambda tag: tag.name =='table' and tag.has_attr('id')
+                                    and (tag['id'] == "divs_standings_E" or tag['id'] == "divs_standings_W"))
+
+        # Workaround solution where we concatonate the two tables as strings to be recompiled by BS.
         soup = str(soup[0]) + str(soup[1])
-        #print(soup)
         wins_soup = BeautifulSoup(soup, 'html.parser')
+
+        # Get our rows from wins table
         cleaned_data = self.clean_data_with_beautifulsoup(self, wins_soup)
 
         for i in range(len(cleaned_data)):
+
+            # Perform parsing operations to clean data. Remove [[, ]], and convert strings into list format.
             cleaned_data[i] = cleaned_data[i][:-2]
             cleaned_data[i] = cleaned_data[i][2:]
             cleaned_data[i] = cleaned_data[i].split(", ")
 
+            # Remove * so that merging with main dataframe is easy.
             if "*" in cleaned_data[i][0]:
                 cleaned_data[i][0] = cleaned_data[i][0][:-1]
 
-        print(pd.DataFrame(cleaned_data))
+        cleaned_data_df = pd.DataFrame(cleaned_data).drop([2, 3, 4, 5, 6, 7], axis=1)
 
+        # Labels for our wins DF. Unstacking switches column into row for proper labels.
+        cleaned_data_df.columns = pd.DataFrame(["Team", "WINS"]).unstack()
+
+        # Remove rows that contain division or conference information.
+        cleaned_data_df = cleaned_data_df[~cleaned_data_df["Team"].str.contains("Conference")]
+        cleaned_data_df = cleaned_data_df[~cleaned_data_df["Team"].str.contains("Division")]
+
+        return cleaned_data_df
 
     def gather_offense_data(self, webpage_soup):
         """ Gather all data from that team's offense """
@@ -140,7 +174,7 @@ class NBATeamDataScraper:
         # return the cleaned dataframe
         return cleaned_data_df
 
-    def merge_team_opponent_data(self, offense_data, defense_data):
+    def merge_team_tables(self, offense_data, defense_data):
         """ Merge the results of gather_offense_data and gather_defense_data into a single dataframe """
         return pd.merge(offense_data, defense_data, on="Team")
 
@@ -161,9 +195,11 @@ class NBATeamDataScraper:
         return cleaned_data
 
 
-def main():
-    # Everything currently "passed" by compiler for testing.
-    nba_2020_data = NBATeamDataScraper.perform_scrape_all_seasons_in_range(NBATeamDataScraper, 2018, 2018)
-    print(nba_2020_data)
-
-main()
+"""def main():
+    nba_2020_data = NBATeamDataScraper.perform_scrape_all_seasons_in_range(NBATeamDataScraper, 1971, 2021)
+    if not nba_2020_data.empty:
+        print(str(nba_2020_data))
+        nba_2020_data.to_csv("out.csv")
+    else:
+        print("it was empty")
+main()"""
