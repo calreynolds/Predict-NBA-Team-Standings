@@ -22,7 +22,7 @@ class NBATeamDataScraper:
         """ This will be our 'master' function, will take in which years you want to scrape.
             Will return the data either as CSV or pandas Dataframe.
             * Years are inclusive *                                                     """
-
+        
         if first_year < 1971 and last_year < 1971:
             print("Error: Queries must be in range of 1971 - 2021. Returning NULL.")
             return pd.DataFrame()
@@ -35,8 +35,12 @@ class NBATeamDataScraper:
         if first_year > last_year:
             print("ERROR: First year in query must be less than or equal to the last year in the query. Returning NULL.")
             return pd.DataFrame()
+            
+
+
 
         cumulative_dataframe = self.perform_scrape_one_season(self, first_year)
+
         for i in range(first_year+1, last_year+1):
             cumulative_dataframe = cumulative_dataframe.append(self.perform_scrape_one_season(self, i))
 
@@ -58,7 +62,14 @@ class NBATeamDataScraper:
         merged_data = self.merge_team_tables(self, offense_data, defense_data)
 
         all_teams_number_wins_df = self.grab_team_wins_df(self, webpage_soup)
+
+        # This fixes a specific issue where current stats have a Team's rank at the end (i.e. New York Knicks (30))
+        if year == 2021:
+            all_teams_number_wins_df['Team'] = all_teams_number_wins_df['Team'].str.replace(r'\s\([0-9]?[0-9]\)', '')
+            all_teams_number_wins_df['Team'] = all_teams_number_wins_df['Team'].str.strip()
+
         merged_data_with_wins = self.merge_team_tables(self, all_teams_number_wins_df, merged_data)
+
         return merged_data_with_wins
 
     def process_cleaned_data(self, cleaned_data, offense):
@@ -194,12 +205,13 @@ class NBATeamDataScraper:
 
         return cleaned_data
 
-
-"""def main():
-    nba_2020_data = NBATeamDataScraper.perform_scrape_all_seasons_in_range(NBATeamDataScraper, 1971, 2021)
+"""
+def main():
+    nba_2020_data = NBATeamDataScraper.perform_scrape_all_seasons_in_range(NBATeamDataScraper, 1999, 2021)
     if not nba_2020_data.empty:
         print(str(nba_2020_data))
         nba_2020_data.to_csv("out.csv")
     else:
         print("it was empty")
-main()"""
+main()
+"""
