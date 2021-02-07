@@ -37,8 +37,6 @@ class NBATeamDataScraper:
             return pd.DataFrame()
             
 
-
-
         cumulative_dataframe = self.perform_scrape_one_season(self, first_year)
 
         for i in range(first_year+1, last_year+1):
