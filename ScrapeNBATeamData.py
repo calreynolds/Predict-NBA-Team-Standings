@@ -61,12 +61,23 @@ class NBATeamDataScraper:
 
         all_teams_number_wins_df = self.grab_team_wins_df(self, webpage_soup)
 
+        # This addresses the 2011-2012 lockout season, where there were only 66 games in the regular season.
+        if year == 2012:
+            all_teams_number_wins_df["WINS"] = ((all_teams_number_wins_df["WINS"].astype(float) * (82/62)).round(0)).astype(int)
+
         # This fixes a specific issue where current stats have a Team's rank at the end (i.e. New York Knicks (30))
         if year == 2021:
             all_teams_number_wins_df['Team'] = all_teams_number_wins_df['Team'].str.replace(r'\s\([0-9]?[0-9]\)', '')
             all_teams_number_wins_df['Team'] = all_teams_number_wins_df['Team'].str.strip()
 
         merged_data_with_wins = self.merge_team_tables(self, all_teams_number_wins_df, merged_data)
+
+        # Adjusts for the varying number of games that teams played due to the COVID-19 shutdown of the season. Extrapolates
+        #   their wins for an 82 game season.
+        if year == 2020:
+            merged_data_with_wins["WINS"] = merged_data_with_wins["WINS"].astype(float)
+            merged_data_with_wins["WINS"] = (merged_data_with_wins["WINS"] * 
+                                                (82 / merged_data_with_wins["G"].astype(int))).round(0).astype(int)
 
         return merged_data_with_wins
 
@@ -205,7 +216,7 @@ class NBATeamDataScraper:
 
 """
 def main():
-    nba_2020_data = NBATeamDataScraper.perform_scrape_all_seasons_in_range(NBATeamDataScraper, 1999, 2021)
+    nba_2020_data = NBATeamDataScraper.perform_scrape_all_seasons_in_range(NBATeamDataScraper, 2019, 2020)
     if not nba_2020_data.empty:
         print(str(nba_2020_data))
         nba_2020_data.to_csv("out.csv")
